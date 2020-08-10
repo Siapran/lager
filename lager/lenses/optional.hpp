@@ -21,13 +21,17 @@ auto opt_impl(Lens&& lens)
 {
     return zug::comp([lens = std::forward<Lens>(lens)](auto&& f) {
         return [&, f = LAGER_FWD(f)](auto&& whole) {
-            using Part = typename PartMeta<std::decay_t<decltype(::lager::view(
-                lens,
-                std::declval<std::decay_t<decltype(whole.value())>>()))>>::type;
+            using OrigPart = typename std::decay_t<decltype(::lager::view(
+                lens, std::declval<std::decay_t<decltype(whole.value())>>()))>;
+            using Part = typename PartMeta<OrigPart>::type;
 
             if (whole.has_value()) {
-                return f(Part{::lager::view(lens, LAGER_FWD(whole).value())})(
-                    [&](Part part) {
+                return f(Part{::lager::view(
+                    lens, LAGER_FWD(whole).value())})([&](Part part) {
+                    if constexpr (std::is_same_v<OrigPart, Part>) {
+                        return std::decay_t<decltype(whole)>{::lager::set(
+                            lens, LAGER_FWD(whole).value(), std::move(part))};
+                    } else {
                         if (part.has_value()) {
                             return std::decay_t<decltype(whole)>{
                                 ::lager::set(lens,
@@ -36,7 +40,8 @@ auto opt_impl(Lens&& lens)
                         } else {
                             return LAGER_FWD(whole);
                         }
-                    });
+                    }
+                });
             } else {
                 return f(Part{std::nullopt})(
                     [&](auto&&) { return LAGER_FWD(whole); });
